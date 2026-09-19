@@ -130,6 +130,7 @@ def format_device(device: dict) -> dict:
         "language": device.get("language") or "en",
         "locale": device.get("locale") or "",
         "bold_text": device.get("bold_text"),
+        "usb": bool(device.get("usb")),
         "connected": True,
     }
 
@@ -139,12 +140,17 @@ def get_all_connected_devices() -> list[dict]:
     raw = [d for d in list_devices() if d.get("udid")]
     if not raw:
         return []
+    # Prefer USB devices, then iPhones, other paired devices and unpaired devices.
+    usb = [d for d in raw if d.get("usb")]
+    wireless = [d for d in raw if not d.get("usb")]
     # Separate into fully paired iPhones, other paired devices, and unpaired devices
-    iphones = [d for d in raw if d.get("product") and str(d["product"]).startswith("iPhone")]
-    other_paired = [d for d in raw if d.get("product") and not str(d["product"]).startswith("iPhone")]
-    unpaired = [d for d in raw if not d.get("product")]
+    def device_groups(source: list[dict]) -> list[dict]:
+        iphones = [d for d in source if d.get("product") and str(d["product"]).startswith("iPhone")]
+        other_paired = [d for d in source if d.get("product") and not str(d["product"]).startswith("iPhone")]
+        unpaired = [d for d in source if not d.get("product")]
+        return iphones + other_paired + unpaired
 
-    sorted_raw = iphones + other_paired + unpaired
+    sorted_raw = device_groups(usb) + device_groups(wireless)
     return [format_device(d) for d in sorted_raw]
 
 
@@ -158,7 +164,12 @@ def get_connected_device(target_udid: str | None = None) -> dict | None:
             if d["udid"] == target_udid:
                 return d
     paired = [d for d in devices if d.get("product")]
-    return paired[0] if paired else devices[0]
+    pool = paired or devices
+    usb = [d for d in pool if d.get("usb")]
+    if usb:
+        pool = usb
+    iphones = [d for d in pool if str(d.get("product") or "").startswith("iPhone")]
+    return (iphones or pool)[0]
 
 
 def syslog_command(udid: str) -> list[str] | None:

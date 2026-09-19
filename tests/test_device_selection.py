@@ -81,6 +81,24 @@ class DeviceSelectionTests(unittest.TestCase):
         self.assertIsNotNone(ipad_dev)
         self.assertEqual(ipad_dev["name"], "User's iPad")
 
+    @patch("aircard.list_devices", return_value=[
+        {
+            "udid": "wifi-iphone",
+            "name": "Wi-Fi iPhone",
+            "product": "iPhone18,1",
+            "usb": False,
+        },
+        {
+            "udid": "usb-iphone",
+            "name": "USB iPhone",
+            "product": "iPhone17,1",
+            "usb": True,
+        },
+    ])
+    def test_usb_device_preferred_unless_explicitly_selected(self, mock_list):
+        self.assertEqual(get_connected_device()["udid"], "usb-iphone")
+        self.assertEqual(get_connected_device("wifi-iphone")["udid"], "wifi-iphone")
+
     @patch("aircard.list_devices", return_value=MOCK_RAW_DEVICES)
     @patch("aircard_backend.find_device_helper", return_value="/bin/device_helper")
     @patch("aircard_backend.native", return_value={"exitCode": 0, "targetGatePassed": True, "operation": {"ok": True}})

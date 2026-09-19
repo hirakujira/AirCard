@@ -605,7 +605,10 @@ class AppViewModel: ObservableObject {
         
         flashedSkins = UserDefaults.standard.dictionary(forKey: flashedSkinsKey) as? [String: String] ?? [:]
         loadSavedCards()
-        if connectOnLaunch { checkDevice() }
+        if connectOnLaunch {
+            checkDevice()
+            startDevicePolling()
+        }
     }
     
     func log(_ message: String) {
@@ -999,12 +1002,31 @@ class AppViewModel: ObservableObject {
         }
     }
 
-    func checkDevice(preferredUDID: String? = nil) {
-        guard !isCheckingDevice, !isFlashing else { return }
+    private var devicePollTimer: Timer?
+    private var deviceCheckStartedAt = Date.distantPast
+
+    /// Re-checks the connected device every few seconds while the app is idle,
+    /// so plugging in, unplugging or swapping an iPhone is picked up on its own.
+    func startDevicePolling() {
+        devicePollTimer?.invalidate()
+        devicePollTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self, !self.isFlashing, !self.isScanningCards else { return }
+                self.checkDevice(silent: true)
+            }
+        }
+    }
+
+    func checkDevice(preferredUDID: String? = nil, silent: Bool = false) {
+        // A check that hangs must never block later ones: allow a new one after 15 s.
+        guard !isFlashing else { return }
+        if isCheckingDevice && Date().timeIntervalSince(deviceCheckStartedAt) < 15 { return }
         isCheckingDevice = true
-        statusText = "Checking connected devices..."
+        deviceCheckStartedAt = Date()
+        if !silent { statusText = "Checking connected devices..." }
         let scriptDir = self.scriptDir
         let targetUDID = preferredUDID ?? selectedDeviceUDID ?? UserDefaults.standard.string(forKey: "mak5er.aircard.selectedUDID")
+        let previousUDID = device?.udid
 
         Task.detached {
             let process = Process()
@@ -1021,105 +1043,105 @@ class AppViewModel: ObservableObject {
             process.standardOutput = pipe
             process.standardError = FileHandle.nullDevice
 
+            var data = Data()
+            var launchError: Error?
+            let watchdog = DispatchWorkItem { if process.isRunning { process.terminate() } }
             do {
                 try process.run()
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                DispatchQueue.global().asyncAfter(deadline: .now() + 12, execute: watchdog)
+                data = pipe.fileHandleForReading.readDataToEndOfFile()
                 process.waitUntilExit()
-
-                if let resp = try? JSONDecoder().decode(DeviceResponse.self, from: data) {
-                    await MainActor.run {
-                        self.isCheckingDevice = false
-                        let allDevs = resp.devices ?? []
-                        self.devices = allDevs
-
-                        if let activeDev = resp.device, activeDev.connected {
-                            self.activateCardDevice(activeDev.udid)
-                            self.device = activeDev
-                            self.refreshWalletCatalog()
-                            self.selectedDeviceUDID = activeDev.udid
-                            if let u = activeDev.udid {
-                                UserDefaults.standard.set(u, forKey: "mak5er.aircard.selectedUDID")
-                            }
-                            self.statusText = "Connected to \(activeDev.name ?? "iPhone")"
-                            self.log("Device connected: \(activeDev.name ?? "iPhone") (\(activeDev.product ?? ""), iOS \(activeDev.version ?? "")) [Total: \(allDevs.count)]")
-                            self.applyDevicePreferences(from: activeDev)
-                        } else if let first = allDevs.first(where: { $0.isPaired }) ?? allDevs.first {
-                            self.activateCardDevice(first.udid)
-                            self.device = first
-                            self.refreshWalletCatalog()
-                            self.selectedDeviceUDID = first.udid
-                            if let u = first.udid {
-                                UserDefaults.standard.set(u, forKey: "mak5er.aircard.selectedUDID")
-                            }
-                            self.statusText = "Connected to \(first.displayName)"
-                            self.log("Device selected: \(first.displayName) [Total: \(allDevs.count)]")
-                            self.applyDevicePreferences(from: first)
-                        } else {
-                            self.activateCardDevice(nil)
-                            self.device = nil
-                            self.refreshWalletCatalog()
-                            if resp.error == "device_helper_missing" {
-                                self.scannerMessage = "Device tools are missing. Rebuild or reinstall AirCard, then reconnect."
-                                self.statusText = "Device tools are missing from this build."
-                                self.log("Bundled device_helper not found — detection cannot run.")
-                            } else {
-                                self.statusText = "No iPhone found. Please connect via USB."
-                                self.scannerMessage = "No iPhone connected. Connect, unlock and trust this Mac, then use Reconnect."
-                            }
-                        }
-                    }
-                } else if let dev = try? JSONDecoder().decode(DeviceInfo.self, from: data) {
-                    await MainActor.run {
-                        self.activateCardDevice(dev.connected ? dev.udid : nil)
-                        self.device = dev
-                        self.refreshWalletCatalog()
-                        self.isCheckingDevice = false
-                        if dev.connected {
-                            self.devices = [dev]
-                            self.device = dev
-                            self.selectedDeviceUDID = dev.udid
-                            self.statusText = "Connected to \(dev.name ?? "iPhone")"
-                            self.log("Device connected: \(dev.name ?? "iPhone") (\(dev.product ?? ""), iOS \(dev.version ?? ""))")
-                            self.applyDevicePreferences(from: dev)
-                        } else {
-                            self.devices = []
-                            self.device = nil
-                            if dev.error == "device_helper_missing" {
-                                self.scannerMessage = "Device tools are missing. Rebuild or reinstall AirCard, then reconnect."
-                                self.statusText = "Device tools are missing from this build."
-                                self.log("Bundled device_helper not found — detection cannot run.")
-                            } else {
-                                self.statusText = "No iPhone found. Please connect via USB."
-                                self.scannerMessage = "No iPhone connected. Connect, unlock and trust this Mac, then use Reconnect."
-                            }
-                        }
-                    }
-                } else {
-                    // Nothing parseable came back, which means the backend did not
-                    // run, not that the cable is loose. Saying "no iPhone" here
-                    // sends people to replug a phone that was never the problem.
-                    let raw = String(data: data, encoding: .utf8) ?? ""
-                    await MainActor.run {
-                        self.devices = []
-                        self.device = nil
-                        self.activateCardDevice(nil)
-                        self.refreshWalletCatalog()
-                        self.isCheckingDevice = false
-                        self.statusText = "Device detection could not run. See the log."
-                        self.errorMessage = "AirCard could not run its device tools. The app may be damaged or incompletely installed."
-                        self.scannerMessage = "Device check failed. Reconnect and unlock the iPhone, then retry."
-                        self.log("Device detection returned nothing usable: \(raw.isEmpty ? "(no output)" : raw.prefix(400).description)")
-                    }
-                }
+                watchdog.cancel()
             } catch {
-                await MainActor.run {
+                watchdog.cancel()
+                launchError = error
+            }
+
+            let decodedResponse = try? JSONDecoder().decode(DeviceResponse.self, from: data)
+            let response: DeviceResponse?
+            if let decodedResponse = decodedResponse,
+               decodedResponse.devices != nil || decodedResponse.device != nil || decodedResponse.selected_udid != nil {
+                response = decodedResponse
+            } else if let dev = try? JSONDecoder().decode(DeviceInfo.self, from: data) {
+                response = DeviceResponse(
+                    connected: dev.connected,
+                    error: dev.error,
+                    devices: dev.connected ? [dev] : [],
+                    selected_udid: dev.udid,
+                    device: dev
+                )
+            } else {
+                response = nil
+            }
+            let detectionErrorDescription = launchError?.localizedDescription
+            await MainActor.run {
+                self.isCheckingDevice = false
+                if let detectionErrorDescription = detectionErrorDescription {
                     self.devices = []
                     self.device = nil
                     self.activateCardDevice(nil)
                     self.refreshWalletCatalog()
-                    self.isCheckingDevice = false
                     self.scannerMessage = "Device check failed. Reconnect and unlock the iPhone, then retry."
-                    self.statusText = "Device detection failed: \(error.localizedDescription)"
+                    self.statusText = "Device detection failed: \(detectionErrorDescription)"
+                    return
+                }
+                guard let response = response else {
+                    // Invalid output means the backend did not run, not that the cable is loose.
+                    let raw = String(data: data, encoding: .utf8) ?? ""
+                    self.devices = []
+                    self.device = nil
+                    self.activateCardDevice(nil)
+                    self.refreshWalletCatalog()
+                    self.errorMessage = "AirCard could not run its device tools. The app may be damaged or incompletely installed."
+                    self.scannerMessage = "Device check failed. Reconnect and unlock the iPhone, then retry."
+                    self.statusText = "Device detection could not run. See the log."
+                    self.log("Device detection returned nothing usable: \(raw.isEmpty ? "(no output)" : raw.prefix(400).description)")
+                    return
+                }
+
+                let allDevs = response.devices ?? []
+                self.devices = allDevs
+                self.errorMessage = nil
+                let selectedDev = response.device.flatMap { $0.connected ? $0 : nil }
+                    ?? allDevs.first(where: { $0.udid == response.selected_udid && $0.connected })
+                    ?? allDevs.first(where: { $0.udid == targetUDID && $0.connected })
+                    ?? allDevs.first(where: { $0.isPaired && $0.connected })
+                    ?? allDevs.first(where: \.connected)
+
+                guard let activeDev = selectedDev else {
+                    // Empty/invalid output or no device: never keep a stale device around.
+                    if previousUDID != nil { self.log("Device disconnected.") }
+                    self.device = response.error == "device_helper_missing"
+                        ? DeviceInfo(udid: nil, name: nil, version: nil, product: nil, language: nil, locale: nil, bold_text: nil, airlift_compatible: nil, connected: false, error: response.error)
+                        : nil
+                    self.activateCardDevice(nil)
+                    self.refreshWalletCatalog()
+                    if response.error == "device_helper_missing" {
+                        self.scannerMessage = "Device tools are missing. Rebuild or reinstall AirCard, then reconnect."
+                        self.statusText = "Device tools are missing from this build."
+                        self.log("Bundled device_helper not found — detection cannot run.")
+                    } else if !silent || previousUDID != nil {
+                        self.statusText = "No iPhone found. Please connect via USB."
+                        self.scannerMessage = "No iPhone connected. Connect, unlock and trust this Mac, then use Reconnect."
+                    }
+                    return
+                }
+
+                let changed = activeDev.udid != previousUDID
+                self.activateCardDevice(activeDev.udid)
+                self.device = activeDev
+                self.refreshWalletCatalog()
+                self.selectedDeviceUDID = activeDev.udid
+                if let udid = activeDev.udid {
+                    UserDefaults.standard.set(udid, forKey: "mak5er.aircard.selectedUDID")
+                }
+                if changed {
+                    self.statusText = "Connected to \(activeDev.name ?? "iPhone")"
+                    self.log("Device connected: \(activeDev.name ?? "iPhone") (\(activeDev.product ?? ""), iOS \(activeDev.version ?? "")) [Total: \(allDevs.count)]")
+                    self.applyDevicePreferences(from: activeDev)
+                } else if !silent {
+                    self.statusText = "Connected to \(activeDev.name ?? "iPhone")"
+                    self.applyDevicePreferences(from: activeDev)
                 }
             }
         }
