@@ -109,6 +109,7 @@ struct CardItem: Identifiable, Hashable {
 
     var hasInvalidPrimaryAccountSuffix: Bool {
         guard isPrimaryAccountSuffixEdited else { return false }
+        if primaryAccountSuffixDraft.isEmpty { return false }
         if primaryAccountSuffixDraft == "NULL" { return false }
         return primaryAccountSuffixDraft.count != 4 ||
             !primaryAccountSuffixDraft.allSatisfy {
@@ -2091,8 +2092,10 @@ struct WalletCardView: View {
             get: { card.primaryAccountSuffixDraft },
             set: { value in
                 card.primaryAccountSuffixDraft = value
-                card.isPrimaryAccountSuffixEdited = true
-                card.isSelected = true
+                card.isPrimaryAccountSuffixEdited = !value.isEmpty
+                if !value.isEmpty {
+                    card.isSelected = true
+                }
             }
         )
     }
@@ -2444,7 +2447,7 @@ struct WalletCardView: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     TextField(
-                        "4 digits or NULL",
+                        "4 digits, NULL, or blank",
                         text: primaryAccountSuffixBinding
                     )
                     .textFieldStyle(.roundedBorder)
@@ -2477,7 +2480,7 @@ struct WalletCardView: View {
                 }
                 if card.hasInvalidPrimaryAccountSuffix {
                     Text(
-                        "Enter exactly 4 digits, or enter NULL to hide it."
+                        "Enter 4 digits or NULL; leave blank to keep unchanged."
                     )
                     .font(.caption2)
                     .foregroundColor(.red)
