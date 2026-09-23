@@ -1928,7 +1928,7 @@ struct WalletCardView: View {
                             .padding(.vertical, 4)
                             .background(.ultraThinMaterial)
                             .cornerRadius(8)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                             .padding(10)
                         
                         // Hover overlay: Change Skin
@@ -2022,7 +2022,7 @@ struct WalletCardView: View {
                         .frame(
                             maxWidth: .infinity,
                             maxHeight: .infinity,
-                            alignment: .bottomTrailing
+                            alignment: .bottomLeading
                         )
                         .padding(14)
                         .allowsHitTesting(false)
