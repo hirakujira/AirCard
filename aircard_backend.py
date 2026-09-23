@@ -5,14 +5,11 @@ Backend engine for AirCard native macOS GUI app.
 from __future__ import annotations
 
 import base64
-import io
 import json
 import os
 import re
-import stat
 import subprocess
 import sys
-import tempfile
 import time
 import zipfile
 from pathlib import Path
@@ -45,7 +42,6 @@ for lp in lib_paths:
 from apply_card_skin import (
     apply_wallet_db_batch_patch,
     apply_wallet_db_patch,
-    extract_file,
     inspect_wallet_db,
     native,
     normalize_primary_account_suffix,
@@ -57,9 +53,6 @@ from apply_card_skin import (
     write_file,
     write_files_batch,
     remove_files,
-    build_archive_multi,
-    ROOT,
-    DEVICE_HELPER,
     WALLET_DB_UNCHANGED,
 )
 from card_assets import CACHE_FILES, build_card_assets
@@ -137,13 +130,6 @@ def cmd_prepare_image(src: str, dst: str):
         print(json.dumps({"ok": False, "error": str(e)}))
 
 
-CARD_ARTWORK_ASSETS = (
-    ("cardBackgroundCombined@3x.png", "image/png"),
-    ("cardBackgroundCombined@2x.png", "image/png"),
-    ("cardBackgroundCombined.pdf", "application/pdf"),
-)
-
-
 def emit_db_diagnostic(
     operation_id: str,
     phase: str,
@@ -177,116 +163,6 @@ def emit_db_diagnostic(
         payload["errorType"] = type(root_error).__name__
     print(json.dumps(payload))
     sys.stdout.flush()
-
-
-def cmd_backup_card(
-    udid: str,
-    card_hash: str,
-    destination_path: str,
-) -> bool:
-    """Back up current artwork and database style after explicit user action."""
-    try:
-        validate_card_hash(card_hash)
-    except ValueError as error:
-        print(json.dumps({"ok": False, "error": str(error)}))
-        return False
-
-    destination = Path(destination_path).expanduser()
-    parent = destination.parent
-    if not parent.is_dir():
-        print(json.dumps({
-            "ok": False,
-            "error": "Backup destination parent does not exist",
-        }))
-        return False
-    if destination.exists() or destination.is_symlink():
-        try:
-            is_regular = stat.S_ISREG(destination.lstat().st_mode)
-        except OSError:
-            is_regular = False
-        if not is_regular:
-            print(json.dumps({
-                "ok": False,
-                "error": "Backup destination is not a regular file",
-            }))
-            return False
-
-    target = f"/var/mobile/Library/Passes/Cards/{card_hash}.pkpass"
-    temporary_path: Path | None = None
-    try:
-        artwork = None
-        image_asset = None
-        image_mime = None
-        with tempfile.TemporaryDirectory(prefix="aircard-backup-read-") as temporary:
-            output_path = os.fspath(Path(temporary) / "card-artwork")
-            for asset, mime_type in CARD_ARTWORK_ASSETS:
-                artwork = extract_file(
-                    udid, target, asset, output_path, retries=1
-                )
-                if artwork is None:
-                    continue
-                image_asset = asset
-                image_mime = mime_type
-                break
-        if artwork is None or image_asset is None or image_mime is None:
-            raise RuntimeError("Card artwork is unavailable")
-
-        database = inspect_wallet_db(udid, card_hash)
-        wallet_style = {
-            "formatVersion": 2,
-            "source": "passes23.sqlite",
-            "foregroundColor": database["foregroundColor"],
-            "labelColor": database["labelColor"],
-            "primaryAccountSuffix": database["primaryAccountSuffix"],
-            "imageAsset": image_asset,
-        }
-        image_data_uri = (
-            f"data:{image_mime};base64,"
-            f"{base64.b64encode(artwork).decode('ascii')}"
-        )
-
-        with tempfile.NamedTemporaryFile(
-            prefix=f".{destination.name}.",
-            suffix=".tmp",
-            dir=parent,
-            delete=False,
-        ) as temporary:
-            temporary_path = Path(temporary.name)
-        with zipfile.ZipFile(
-            temporary_path,
-            "w",
-            compression=zipfile.ZIP_DEFLATED,
-        ) as archive:
-            archive.writestr(image_asset, artwork)
-            archive.writestr(
-                "wallet-style.json",
-                json.dumps(
-                    wallet_style,
-                    ensure_ascii=False,
-                    indent=2,
-                    sort_keys=True,
-                ).encode("utf-8"),
-            )
-        os.replace(temporary_path, destination)
-        temporary_path = None
-
-        response = {
-            "ok": True,
-            "fileName": destination.name,
-            "imageDataURI": image_data_uri,
-            "imageAsset": image_asset,
-            "foregroundColor": wallet_style["foregroundColor"],
-            "labelColor": wallet_style["labelColor"],
-            "primaryAccountSuffix": wallet_style["primaryAccountSuffix"],
-        }
-        print(json.dumps(response))
-        return True
-    except Exception as error:
-        print(json.dumps({"ok": False, "error": str(error)}))
-        return False
-    finally:
-        if temporary_path is not None:
-            temporary_path.unlink(missing_ok=True)
 
 
 def cmd_inspect_wallet_db(udid: str, card_hash: str) -> bool:
@@ -1058,9 +934,6 @@ def main():
         cmd_save_cards(sys.argv[2])
     elif norm_cmd == "prepare-image" and len(sys.argv) > 3:
         cmd_prepare_image(sys.argv[2], sys.argv[3])
-    elif norm_cmd == "backup-card" and len(sys.argv) == 5:
-        if not cmd_backup_card(sys.argv[2], sys.argv[3], sys.argv[4]):
-            sys.exit(1)
     elif norm_cmd == "inspect-wallet-db" and len(sys.argv) == 4:
         if not cmd_inspect_wallet_db(sys.argv[2], sys.argv[3]):
             sys.exit(1)
