@@ -118,12 +118,9 @@ struct CardItem: Identifiable, Hashable {
     }
 
     var currentForegroundColor: String? = nil
-    var currentLabelColor: String? = nil
     var currentPrimaryAccountSuffix: String? = nil
     var foregroundColorHex: String? = nil
-    var labelColorHex: String? = nil
     var originalForegroundColor: String? = nil
-    var originalLabelColor: String? = nil
     var primaryAccountSuffixDraft: String = ""
     var isPrimaryAccountSuffixEdited: Bool = false
 
@@ -155,7 +152,6 @@ struct CardItem: Identifiable, Hashable {
 
     var hasPendingDatabaseChanges: Bool {
         foregroundColorHex != nil ||
-            labelColorHex != nil ||
             isPrimaryAccountSuffixEdited
     }
     
@@ -170,7 +166,6 @@ struct CardItem: Identifiable, Hashable {
             lhs.displayName == rhs.displayName &&
             lhs.confirmed == rhs.confirmed &&
             lhs.foregroundColorHex == rhs.foregroundColorHex &&
-            lhs.labelColorHex == rhs.labelColorHex &&
             lhs.primaryAccountSuffixDraft == rhs.primaryAccountSuffixDraft &&
             lhs.isPrimaryAccountSuffixEdited ==
                 rhs.isPrimaryAccountSuffixEdited
@@ -1051,7 +1046,7 @@ class AppViewModel: ObservableObject {
         }
     }
 
-    func clearCardColors(for cardId: String) {
+    func clearCardNumberColor(for cardId: String) {
         if let idx = cards.firstIndex(where: { $0.id == cardId }) {
             if let original = cards[idx].originalForegroundColor {
                 let color = Color(airCardPassColor: original) ?? .white
@@ -1059,26 +1054,18 @@ class AppViewModel: ObservableObject {
             } else {
                 cards[idx].foregroundColorHex = nil
             }
-            if let original = cards[idx].originalLabelColor {
-                let color = Color(airCardPassColor: original) ?? .white
-                cards[idx].labelColorHex = color.airCardHex
-            } else {
-                cards[idx].labelColorHex = nil
-            }
-            log("Restored original text colors for: \(cardId.prefix(12))...")
+            log("Restored original card number color for: \(cardId.prefix(12))...")
         }
     }
 
     private func resetCardReadback() {
         for index in cards.indices {
             cards[index].currentForegroundColor = nil
-            cards[index].currentLabelColor = nil
             cards[index].currentPrimaryAccountSuffix = nil
             if !cards[index].isPrimaryAccountSuffixEdited {
                 cards[index].primaryAccountSuffixDraft = ""
             }
             cards[index].originalForegroundColor = nil
-            cards[index].originalLabelColor = nil
         }
     }
     
@@ -1523,7 +1510,6 @@ class AppViewModel: ObservableObject {
             verifiedIDs.contains($0.id) &&
                 $0.isSelected &&
                 ($0.foregroundColorHex != nil ||
-                    $0.labelColorHex != nil ||
                     $0.isPrimaryAccountSuffixEdited)
         }
         var selectedCardsWithChanges = changed
@@ -1537,7 +1523,7 @@ class AppViewModel: ObservableObject {
         }
         guard !selectedCardsWithChanges.isEmpty else {
             errorMessage =
-                "Please assign a skin, text color, or card number to at least one verified selected card."
+                "Please assign an image, card number color, or card number to at least one verified selected card."
             return
         }
         guard !selectedCardsWithChanges.contains(
@@ -1770,9 +1756,6 @@ class AppViewModel: ObservableObject {
                     if let color = card.foregroundColorHex {
                         update["foregroundColor"] = color
                     }
-                    if let color = card.labelColorHex {
-                        update["labelColor"] = color
-                    }
                     if card.isPrimaryAccountSuffixEdited {
                         update["primaryAccountSuffix"] =
                             card.primaryAccountSuffixDraft
@@ -1867,12 +1850,6 @@ class AppViewModel: ObservableObject {
                                                     .originalForegroundColor =
                                                     originals["foregroundColor"]
                                             }
-                                            if self.cards[cardIndex]
-                                                .originalLabelColor == nil {
-                                                self.cards[cardIndex]
-                                                    .originalLabelColor =
-                                                    originals["labelColor"]
-                                            }
                                         }
                                         if let applied =
                                             result["appliedColors"]
@@ -1882,11 +1859,6 @@ class AppViewModel: ObservableObject {
                                                 self.cards[cardIndex]
                                                     .currentForegroundColor =
                                                     value
-                                            }
-                                            if let value =
-                                                applied["labelColor"] {
-                                                self.cards[cardIndex]
-                                                    .currentLabelColor = value
                                             }
                                         }
                                         if card.isPrimaryAccountSuffixEdited {
@@ -2285,7 +2257,7 @@ struct WalletCardView: View {
     var isFlashed: Bool = false
     let onPickImage: () -> Void
     let onClearImage: () -> Void
-    let onClearColors: () -> Void
+    let onClearNumberColor: () -> Void
     let onDelete: () -> Void
     let onDropImage: (URL) -> Void
     
@@ -2299,27 +2271,11 @@ struct WalletCardView: View {
             ?? .white
     }
 
-    private var currentLabelColor: Color {
-        card.labelColorHex.flatMap(Color.init(airCardPassColor:))
-            ?? card.currentLabelColor.flatMap(Color.init(airCardPassColor:))
-            ?? .white
-    }
-
     private var digitsColorBinding: Binding<Color> {
         Binding(
             get: { currentDigitsColor },
             set: { color in
                 card.foregroundColorHex = color.airCardHex
-                card.isSelected = true
-            }
-        )
-    }
-
-    private var labelColorBinding: Binding<Color> {
-        Binding(
-            get: { currentLabelColor },
-            set: { color in
-                card.labelColorHex = color.airCardHex
                 card.isSelected = true
             }
         )
@@ -2534,14 +2490,6 @@ struct WalletCardView: View {
                         .overlay(Circle().stroke(.secondary.opacity(0.4)))
                         .help("Current digits: \(value)")
                 }
-                if let value = card.currentLabelColor,
-                   let color = Color(airCardPassColor: value) {
-                    Circle()
-                        .fill(color)
-                        .frame(width: 10, height: 10)
-                        .overlay(Circle().stroke(.secondary.opacity(0.4)))
-                        .help("Current CARD label: \(value)")
-                }
                 Spacer()
             }
             .font(.caption2)
@@ -2555,19 +2503,12 @@ struct WalletCardView: View {
                 )
                     .help("Color of the card number")
 
-                ColorPicker(
-                    "CARD label",
-                    selection: labelColorBinding,
-                    supportsOpacity: false
-                )
-                    .help("Color of the CARD label")
-
-                if card.foregroundColorHex != nil || card.labelColorHex != nil {
+                if card.foregroundColorHex != nil {
                     Button(
-                        card.originalForegroundColor != nil || card.originalLabelColor != nil
+                        card.originalForegroundColor != nil
                             ? "Restore original"
-                            : "Clear colors",
-                        action: onClearColors
+                            : "Clear color",
+                        action: onClearNumberColor
                     )
                         .buttonStyle(.link)
                         .font(.caption2)
@@ -2678,7 +2619,6 @@ struct WalletCardView: View {
                         .help(isFlashed ? "Skin already on iPhone" : "Skin changed, will be flashed")
                 }
                 if card.foregroundColorHex != nil ||
-                    card.labelColorHex != nil ||
                     card.isPrimaryAccountSuffixEdited {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
@@ -2839,7 +2779,7 @@ struct ContentView: View {
                                     isFlashed: vm.isSkinFlashed(verifiedCard),
                                     onPickImage: { openCardImagePicker(for: cardID) },
                                     onClearImage: { vm.clearCardImage(for: cardID) },
-                                    onClearColors: { vm.clearCardColors(for: cardID) },
+                                    onClearNumberColor: { vm.clearCardNumberColor(for: cardID) },
                                     onDelete: { vm.deleteCard(id: cardID) },
                                     onDropImage: { url in
                                         guard vm.device?.udid == deviceID else { return }
@@ -2891,7 +2831,7 @@ struct ContentView: View {
             if vm.selectedTab == .passcodeThemes {
                 Text("Passcode theme successfully applied!\n\nLock your iPhone (or restart) to see your new passcode keypad.")
             } else if vm.lastFlashChangedDatabase {
-                Text("Wallet colors or card number were updated.\n\nA full iPhone restart is required. Reopening or force-closing Wallet will not apply the database changes.")
+                Text("The Wallet card number color or suffix was updated.\n\nA full iPhone restart is required. Reopening or force-closing Wallet will not apply the database changes.")
             } else {
                 Text("Artwork successfully applied to all selected cards!\n\nForce-close and reopen Wallet to see the new artwork.")
             }

@@ -84,7 +84,6 @@ class WalletDBInspectionTests(unittest.TestCase):
         self.assertEqual(result["quickCheck"], ["ok"])
         self.assertEqual(result["rowCount"], 1)
         self.assertEqual(result["foregroundColor"], "rgb(1, 2, 3)")
-        self.assertEqual(result["labelColor"], "rgb(4, 5, 6)")
         self.assertIsNone(result["primaryAccountSuffix"])
         self.assertEqual(
             result["sidecars"],
@@ -234,7 +233,6 @@ class WalletDBInspectionTests(unittest.TestCase):
                 return_value={
                     "rowCount": 1,
                     "foregroundColor": "fg",
-                    "labelColor": "label",
                     "primaryAccountSuffix": None,
                 },
             ),
@@ -324,17 +322,12 @@ class WalletDBPatchTests(unittest.TestCase):
             result["originalColors"],
             {
                 "foreground_color": "rgba(1, 2, 3, 1.00)",
-                "label_color": "rgba(4, 5, 6, 1.00)",
                 "primary_account_suffix": "1234",
             },
         )
         self.assertEqual(
             inspected["foregroundColor"],
             "rgba(170, 187, 204, 1.00)",
-        )
-        self.assertEqual(
-            inspected["labelColor"],
-            "rgba(4, 5, 6, 1.00)",
         )
         with tempfile.TemporaryDirectory() as temporary:
             database = Path(temporary) / "patched.sqlite"
@@ -344,27 +337,24 @@ class WalletDBPatchTests(unittest.TestCase):
                     """
                     SELECT
                         foreground_color,
-                        label_color,
                         primary_account_suffix
                     FROM pass
                     WHERE unique_id = ?
                     """,
                     ("ZYXWVUTSRQPONMLKJIHG=",),
                 ).fetchone()
-        self.assertEqual(other, ("other foreground", "other label", "9876"))
+        self.assertEqual(other, ("other foreground", "9876"))
 
     def test_rgba_normalization_accepts_hex_and_rgb(self) -> None:
         result = apply_card_skin.patch_wallet_db(
             self.original,
             CARD_HASH,
             foreground_color="#00ff7F",
-            label_color="rgb(9, 10, 255)",
         )
         self.assertEqual(
             result["appliedColors"],
             {
                 "foreground_color": "rgba(0, 255, 127, 1.00)",
-                "label_color": "rgba(9, 10, 255, 1.00)",
                 "primary_account_suffix": "1234",
             },
         )
@@ -383,7 +373,7 @@ class WalletDBPatchTests(unittest.TestCase):
                 {
                     "cardHash": SECOND_CARD_HASH,
                     "requestIndex": 1,
-                    "labelColor": "#010203",
+                    "foregroundColor": "#010203",
                     "primaryAccountSuffix": "0042",
                 },
             ],
@@ -398,7 +388,7 @@ class WalletDBPatchTests(unittest.TestCase):
             SECOND_CARD_HASH,
         )
         self.assertEqual(first["foregroundColor"], "rgba(170, 187, 204, 1.00)")
-        self.assertEqual(second["labelColor"], "rgba(1, 2, 3, 1.00)")
+        self.assertEqual(second["foregroundColor"], "rgba(1, 2, 3, 1.00)")
         self.assertEqual(second["primaryAccountSuffix"], "0042")
         self.assertEqual(result["originalBytes"], self.original)
         self.assertEqual(result["cardHashes"], [CARD_HASH, SECOND_CARD_HASH])
@@ -410,7 +400,7 @@ class WalletDBPatchTests(unittest.TestCase):
     def test_batch_prepare_extracts_wallet_database_once(self) -> None:
         updates = [
             {"cardHash": CARD_HASH, "foregroundColor": "#AABBCC"},
-            {"cardHash": SECOND_CARD_HASH, "labelColor": "#010203"},
+            {"cardHash": SECOND_CARD_HASH, "foregroundColor": "#010203"},
         ]
         with patch.object(
             apply_card_skin,
@@ -430,7 +420,7 @@ class WalletDBPatchTests(unittest.TestCase):
             self.original,
             [
                 {"cardHash": CARD_HASH, "foregroundColor": "#AABBCC"},
-                {"cardHash": SECOND_CARD_HASH, "labelColor": "#010203"},
+                {"cardHash": SECOND_CARD_HASH, "foregroundColor": "#010203"},
             ],
         )
         with (
@@ -469,7 +459,7 @@ class WalletDBPatchTests(unittest.TestCase):
                 self.original,
                 [
                     {"cardHash": CARD_HASH, "foregroundColor": "#AABBCC"},
-                    {"cardHash": CARD_HASH, "labelColor": "#010203"},
+                    {"cardHash": CARD_HASH, "foregroundColor": "#010203"},
                 ],
             )
         with self.assertRaisesRegex(ValueError, "requestIndex"):
@@ -484,7 +474,7 @@ class WalletDBPatchTests(unittest.TestCase):
                     {
                         "cardHash": SECOND_CARD_HASH,
                         "requestIndex": 0,
-                        "labelColor": "#010203",
+                        "foregroundColor": "#010203",
                     },
                 ],
             )

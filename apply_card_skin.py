@@ -769,6 +769,7 @@ def _wallet_db_metadata(connection: sqlite3.Connection) -> dict:
     columns = [
         str(row[1]) for row in connection.execute("PRAGMA table_info(pass)")
     ]
+    # Keep the known Wallet schema gate, but never read or write label_color.
     required = {
         "unique_id",
         "foreground_color",
@@ -794,7 +795,7 @@ def _wallet_db_card_row(
 ) -> tuple:
     rows = connection.execute(
         """
-        SELECT foreground_color, label_color, primary_account_suffix
+        SELECT foreground_color, primary_account_suffix
         FROM pass
         WHERE unique_id = ?
         """,
@@ -821,8 +822,7 @@ def _inspect_wallet_db_path(database: Path, card_hash: str) -> dict:
         **metadata,
         "rowCount": 1,
         "foregroundColor": row[0],
-        "labelColor": row[1],
-        "primaryAccountSuffix": row[2],
+        "primaryAccountSuffix": row[1],
     }
 
 
@@ -851,8 +851,7 @@ def inspect_wallet_db_batch_bytes(
                     **metadata,
                     "rowCount": 1,
                     "foregroundColor": row[0],
-                    "labelColor": row[1],
-                    "primaryAccountSuffix": row[2],
+                    "primaryAccountSuffix": row[1],
                 })
             return results
 
@@ -865,7 +864,6 @@ def inspect_wallet_db_bytes(database_bytes: bytes, card_hash: str) -> dict:
 def _normalize_wallet_db_update(
     card_hash: str,
     foreground_color: str | None,
-    label_color: str | None,
     primary_account_suffix: str | None | object,
 ) -> dict:
     validate_card_hash(card_hash)
@@ -873,7 +871,6 @@ def _normalize_wallet_db_update(
         column: normalize_wallet_db_color(value)
         for column, value in {
             "foreground_color": foreground_color,
-            "label_color": label_color,
         }.items()
         if value is not None
     }
@@ -899,7 +896,6 @@ def patch_wallet_db_batch(original: bytes, updates: list[dict]) -> dict:
     allowed_keys = {
         "cardHash",
         "foregroundColor",
-        "labelColor",
         "primaryAccountSuffix",
         "requestIndex",
     }
@@ -941,7 +937,6 @@ def patch_wallet_db_batch(original: bytes, updates: list[dict]) -> dict:
             "updates": _normalize_wallet_db_update(
                 card_hash,
                 update.get("foregroundColor"),
-                update.get("labelColor"),
                 update.get("primaryAccountSuffix", WALLET_DB_UNCHANGED),
             ),
         })
@@ -970,8 +965,7 @@ def patch_wallet_db_batch(original: bytes, updates: list[dict]) -> dict:
                     "requestIndex": update["requestIndex"],
                     "originalColors": {
                         "foreground_color": row[0],
-                        "label_color": row[1],
-                        "primary_account_suffix": row[2],
+                        "primary_account_suffix": row[1],
                     },
                     "updates": update["updates"],
                 })
@@ -1015,8 +1009,7 @@ def patch_wallet_db_batch(original: bytes, updates: list[dict]) -> dict:
                 row = _wallet_db_card_row(connection, card["cardHash"])
                 applied = {
                     "foreground_color": row[0],
-                    "label_color": row[1],
-                    "primary_account_suffix": row[2],
+                    "primary_account_suffix": row[1],
                 }
                 mismatches = [
                     column
@@ -1043,7 +1036,6 @@ def patch_wallet_db(
     original: bytes,
     card_hash: str,
     foreground_color: str | None = None,
-    label_color: str | None = None,
     primary_account_suffix: str | None | object = WALLET_DB_UNCHANGED,
 ) -> dict:
     """Patch one card through the shared batch transaction."""
@@ -1052,7 +1044,6 @@ def patch_wallet_db(
         [{
             "cardHash": card_hash,
             "foregroundColor": foreground_color,
-            "labelColor": label_color,
             **(
                 {"primaryAccountSuffix": primary_account_suffix}
                 if primary_account_suffix is not WALLET_DB_UNCHANGED
@@ -1143,7 +1134,6 @@ def prepare_wallet_db_patch(
     udid: str,
     card_hash: str,
     foreground_color: str | None = None,
-    label_color: str | None = None,
     primary_account_suffix: str | None | object = WALLET_DB_UNCHANGED,
 ) -> dict:
     """Extract, gate, and locally prepare a Wallet DB style patch."""
@@ -1155,7 +1145,6 @@ def prepare_wallet_db_patch(
             original,
             card_hash,
             foreground_color,
-            label_color,
             primary_account_suffix,
         )
     except Exception as error:
@@ -1286,7 +1275,6 @@ def apply_wallet_db_batch_patch(udid: str, prepared: dict) -> list[dict]:
             expected = card["appliedColors"]
             actual = {
                 "foreground_color": inspected["foregroundColor"],
-                "label_color": inspected["labelColor"],
                 "primary_account_suffix": inspected[
                     "primaryAccountSuffix"
                 ],

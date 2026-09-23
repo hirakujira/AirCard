@@ -45,12 +45,10 @@ class CardFlashTests(unittest.TestCase):
         return {
             "originalColors": {
                 "foreground_color": "rgba(1, 2, 3, 1.00)",
-                "label_color": "rgba(4, 5, 6, 1.00)",
                 "primary_account_suffix": "1234",
             },
             "appliedColors": {
                 "foreground_color": "rgba(170, 187, 204, 1.00)",
-                "label_color": "rgba(7, 8, 9, 1.00)",
                 "primary_account_suffix": "1234",
             },
         }
@@ -441,7 +439,6 @@ class CardFlashTests(unittest.TestCase):
                 CARD_HASH,
                 "-",
                 "#AABBCC",
-                "rgb(7, 8, 9)",
             )
 
         self.assertTrue(result)
@@ -452,14 +449,12 @@ class CardFlashTests(unittest.TestCase):
             success["originalColors"],
             {
                 "foregroundColor": "rgba(1, 2, 3, 1.00)",
-                "labelColor": "rgba(4, 5, 6, 1.00)",
             },
         )
         self.assertEqual(
             success["appliedColors"],
             {
                 "foregroundColor": "rgba(170, 187, 204, 1.00)",
-                "labelColor": "rgba(7, 8, 9, 1.00)",
             },
         )
         self.assertIn("Reboot required", success["message"])
@@ -472,12 +467,10 @@ class CardFlashTests(unittest.TestCase):
                     "requestIndex": 0,
                     "originalColors": {
                         "foreground_color": "old foreground",
-                        "label_color": "old label",
                         "primary_account_suffix": "1234",
                     },
                     "appliedColors": {
                         "foreground_color": "new foreground",
-                        "label_color": "old label",
                         "primary_account_suffix": "1234",
                     },
                 },
@@ -486,12 +479,10 @@ class CardFlashTests(unittest.TestCase):
                     "requestIndex": 1,
                     "originalColors": {
                         "foreground_color": "other foreground",
-                        "label_color": "other label",
                         "primary_account_suffix": "9876",
                     },
                     "appliedColors": {
-                        "foreground_color": "other foreground",
-                        "label_color": "new label",
+                        "foreground_color": "new foreground",
                         "primary_account_suffix": "0042",
                     },
                 },
@@ -506,7 +497,7 @@ class CardFlashTests(unittest.TestCase):
             {
                 "cardHash": "ZYXWVUTSRQPONMLKJIHG=",
                 "requestIndex": 1,
-                "labelColor": "#010203",
+                "foregroundColor": "#010203",
                 "primaryAccountSuffix": "0042",
             },
         ]
@@ -562,7 +553,6 @@ class CardFlashTests(unittest.TestCase):
         self.assertLess(artwork_loop, database_batch)
         self.assertEqual(flow.count('"--flash-wallet-db-batch"'), 1)
         self.assertNotIn('"--foreground-color"', flow)
-        self.assertNotIn('"--label-color"', flow)
         self.assertNotIn('"--primary-account-suffix"', flow)
 
         suffix_binding_start = source.index(
@@ -616,7 +606,6 @@ class CardFlashTests(unittest.TestCase):
             "device",
             CARD_HASH,
             None,
-            None,
             "0042",
         )
         write_file.assert_not_called()
@@ -647,7 +636,6 @@ class CardFlashTests(unittest.TestCase):
         prepare.assert_called_once_with(
             "device",
             CARD_HASH,
-            None,
             None,
             "NULL",
         )
