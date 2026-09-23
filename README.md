@@ -12,7 +12,7 @@
 
 ## Features
 - 🎨 **Custom Card Skins:** Assign custom artwork, textures, or bank logos to Apple Pay and Wallet cards.
-- 🌈 **Payment Card Text Colors:** Customize the payment card number and `CARD` label colors without changing payment identifiers or device-specific payment data.
+- 🌈 **Payment Card Number Color:** Customize the payment card number color without changing payment identifiers or device-specific payment data.
 - 🔢 **Card Number Suffix:** Set exactly four displayed digits, or enter `NULL` to hide the card number.
 - 🔢 **Lock Screen Passcode Themes (.passthm):** Apply custom keypad button artwork from popular `.passthm` themes directly to iOS 18+ lockscreen.
 - 🧩 **Passcode Theme Creator:** Create custom themes from a single wallpaper (Seamless Poster Slicing) or build key-by-key (Individual Keys).
@@ -61,7 +61,7 @@
    - Authenticate with **Face ID**.
    - **Tap your card** (or tap it once more) to trigger instant detection!
 4. Click on any card mockup or drag & drop an image directly onto the card.
-5. Use the **Digits** and **CARD label** color pickers when you only want to change Wallet text colors. These settings are available with or without a custom image.
+5. Use the **Digits** color picker when you only want to change the Wallet card number color. This setting is available with or without a custom image.
 6. Enter exactly four ASCII digits to change the suffix, or enter `NULL` to hide it. Leave the field blank to keep the current suffix unchanged.
 7. Click **Flash Skins** and review the database warning when colors or the card-number suffix are selected.
 8. For database changes, fully restart the iPhone; reopening Wallet is not enough. For artwork-only changes, force-close and reopen Wallet.

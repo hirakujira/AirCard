@@ -242,11 +242,9 @@ def cmd_flash_wallet_db_batch(udid: str, updates_path: str) -> bool:
             "requestIndex": card.get("requestIndex"),
             "originalColors": {
                 "foregroundColor": card["originalColors"]["foreground_color"],
-                "labelColor": card["originalColors"]["label_color"],
             },
             "appliedColors": {
                 "foregroundColor": card["appliedColors"]["foreground_color"],
-                "labelColor": card["appliedColors"]["label_color"],
             },
             "originalPrimaryAccountSuffix": card["originalColors"][
                 "primary_account_suffix"
@@ -290,7 +288,6 @@ def cmd_flash(
     card_hash: str,
     image_path: str,
     foreground_color: str | None = None,
-    label_color: str | None = None,
     primary_account_suffix: str | None | object = WALLET_DB_UNCHANGED,
 ) -> bool:
     try:
@@ -325,7 +322,6 @@ def cmd_flash(
     
     database_requested = (
         foreground_color is not None
-        or label_color is not None
         or primary_account_suffix is not WALLET_DB_UNCHANGED
     )
     cache_steps = 2 if asset_payloads else 0
@@ -371,20 +367,17 @@ def cmd_flash(
                 udid,
                 card_hash,
                 foreground_color,
-                label_color,
                 primary_account_suffix,
             )
             original_colors = {
                 "foregroundColor": prepared_database["originalColors"][
                     "foreground_color"
                 ],
-                "labelColor": prepared_database["originalColors"]["label_color"],
             }
             applied_colors = {
                 "foregroundColor": prepared_database["appliedColors"][
                     "foreground_color"
                 ],
-                "labelColor": prepared_database["appliedColors"]["label_color"],
             }
             original_primary_account_suffix = prepared_database[
                 "originalColors"
@@ -942,7 +935,6 @@ def main():
             sys.exit(1)
     elif norm_cmd == "flash" and len(sys.argv) > 4:
         foreground_color = None
-        label_color = None
         primary_account_suffix: str | None | object = WALLET_DB_UNCHANGED
         index = 5
         while index < len(sys.argv):
@@ -951,8 +943,6 @@ def main():
                 sys.exit(1)
             if sys.argv[index] == "--foreground-color":
                 foreground_color = sys.argv[index + 1]
-            elif sys.argv[index] == "--label-color":
-                label_color = sys.argv[index + 1]
             elif sys.argv[index] == "--primary-account-suffix":
                 primary_account_suffix = sys.argv[index + 1]
             else:
@@ -964,7 +954,6 @@ def main():
             sys.argv[3],
             sys.argv[4],
             foreground_color,
-            label_color,
             primary_account_suffix,
         ):
             sys.exit(1)
