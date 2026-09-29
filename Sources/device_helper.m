@@ -138,7 +138,8 @@ typedef struct {
 static void DeviceCallback(AMDeviceNotificationCallbackInfo *info,
                            void *context) {
     (void)context;
-    if (!info || !info->device || info->message != 1 || TargetDevice) return;
+    if (!info || !info->device || info->message != 1 || TargetDevice ||
+        AMDeviceGetInterfaceType(info->device) != 1) return;
     CFStringRef identifier = AMDeviceCopyDeviceIdentifier(info->device);
     BOOL matches = identifier && CFEqual(identifier, TargetIdentifier);
     if (identifier) CFRelease(identifier);
@@ -155,7 +156,7 @@ static int FindTarget(void) {
         0,
         NULL,
         &subscription,
-        (__bridge CFDictionaryRef)AirCardDeviceNotificationOptions(NO));
+        (__bridge CFDictionaryRef)AirCardDeviceNotificationOptions(YES));
     if (status == 0)
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, 30.0, false);
     if (subscription) AMDeviceNotificationUnsubscribe(subscription);
@@ -173,6 +174,7 @@ static void EnumerateCallback(AMDeviceNotificationCallbackInfo *info,
                               void *context) {
     (void)context;
     if (!info || !info->device || info->message != 1) return;
+    if (AMDeviceGetInterfaceType(info->device) != 1) return;
     CFStringRef identifier = AMDeviceCopyDeviceIdentifier(info->device);
     if (!identifier) return;
     NSString *udid =
@@ -231,7 +233,7 @@ static int ListDevices(void) {
         &subscription,
         (__bridge CFDictionaryRef)AirCardDeviceNotificationOptions(YES));
     if (status == 0)
-        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 2.0, false);
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 8.0, false);
     if (subscription) AMDeviceNotificationUnsubscribe(subscription);
     NSData *data = [NSJSONSerialization dataWithJSONObject:DiscoveredDevices
                                                    options:0

@@ -89,11 +89,7 @@ def find_device_helper() -> str | None:
 
 
 def list_devices() -> list[dict]:
-    """Enumerates paired devices reachable over USB.
-
-    Wi-Fi-paired devices can appear here too, and an entry whose session could
-    not be opened is reported with an empty `product`.
-    """
+    """Enumerates paired devices connected to the host over USB."""
     helper = find_device_helper()
     if not helper:
         return []
@@ -155,21 +151,19 @@ def get_all_connected_devices() -> list[dict]:
 
 
 def get_connected_device(target_udid: str | None = None) -> dict | None:
-    """Picks the connected device (by UDID if given, or the best available device)."""
-    devices = get_all_connected_devices()
-    if not devices:
-        return None
+    """Picks a USB-connected iPhone, preferring the requested UDID."""
+    devices = [
+        device
+        for device in get_all_connected_devices()
+        if device.get("usb")
+        and str(device.get("product", "")).startswith("iPhone")
+    ]
     if target_udid:
         for d in devices:
             if d["udid"] == target_udid:
                 return d
-    paired = [d for d in devices if d.get("product")]
-    pool = paired or devices
-    usb = [d for d in pool if d.get("usb")]
-    if usb:
-        pool = usb
-    iphones = [d for d in pool if str(d.get("product") or "").startswith("iPhone")]
-    return (iphones or pool)[0]
+        return None
+    return devices[0] if devices else None
 
 
 def syslog_command(udid: str) -> list[str] | None:

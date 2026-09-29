@@ -1120,10 +1120,8 @@ class AppViewModel: ObservableObject {
     }
 
     private var devicePollTimer: Timer?
-    private var deviceCheckStartedAt = Date.distantPast
 
-    /// Re-checks the connected device every few seconds while the app is idle,
-    /// so plugging in, unplugging or swapping an iPhone is picked up on its own.
+    /// Re-checks USB-connected devices while idle, without overlapping probes.
     func startDevicePolling() {
         devicePollTimer?.invalidate()
         devicePollTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: true) { [weak self] _ in
@@ -1138,11 +1136,9 @@ class AppViewModel: ObservableObject {
     }
 
     func checkDevice(preferredUDID: String? = nil, silent: Bool = false) {
-        // A check that hangs must never block later ones: allow a new one after 15 s.
-        guard !isFlashing else { return }
-        if isCheckingDevice && Date().timeIntervalSince(deviceCheckStartedAt) < 15 { return }
+        guard !isCheckingDevice else { return }
+        guard !isFlashing, !isRestartingDevice else { return }
         isCheckingDevice = true
-        deviceCheckStartedAt = Date()
         if !silent { statusText = "Checking connected devices..." }
         let scriptDir = self.scriptDir
         let targetUDID = preferredUDID ?? selectedDeviceUDID ?? UserDefaults.standard.string(forKey: "mak5er.aircard.selectedUDID")
@@ -1165,15 +1161,15 @@ class AppViewModel: ObservableObject {
 
             var data = Data()
             var launchError: Error?
-            let watchdog = DispatchWorkItem { if process.isRunning { process.terminate() } }
             do {
                 try process.run()
-                DispatchQueue.global().asyncAfter(deadline: .now() + 12, execute: watchdog)
+                // USB enumeration can take 8 s, followed by a 60 s device probe.
+                let watchdog = DispatchWorkItem { if process.isRunning { process.terminate() } }
+                DispatchQueue.global().asyncAfter(deadline: .now() + 90, execute: watchdog)
                 data = pipe.fileHandleForReading.readDataToEndOfFile()
                 process.waitUntilExit()
                 watchdog.cancel()
             } catch {
-                watchdog.cancel()
                 launchError = error
             }
 
